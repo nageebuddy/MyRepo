@@ -1,0 +1,409 @@
+{
+   "AWSTemplateFormatVersion":"2010-09-09",
+   "Parameters":{
+      "KeyPair":{
+         "Description":"Name of an existing EC2 KeyPair to enable SSH access to the instances",
+         "Type":"String",
+         "MinLength":"1",
+         "MaxLength":"64",
+         "AllowedPattern":"[-_ a-zA-Z0-9]*",
+         "ConstraintDescription":"'KeyPair' can contain only alphanumeric characters, spaces, dashes and underscores."
+      },
+      "SSHAccess":{
+         "Description":"Lockdown SSH access to the VPN server (use format of xx.xx.xx.xx/32. Default can be accessed from anywhere)",
+         "Type":"String",
+         "MinLength":"9",
+         "MaxLength":"18",
+         "Default":"0.0.0.0/0",
+         "AllowedPattern":"(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+         "ConstraintDescription":"'SSHAccess' must be a valid CIDR range of the form x.x.x.x/x."
+      },
+      "InstanceType":{
+         "Description":"VPN Server EC2 instance type",
+         "Type":"String",
+         "Default":"m1.small",
+         "AllowedValues":[ "t1.micro", "m1.small", "m1.medium", "m2.xlarge", "m2.4xlarge" ],
+         "ConstraintDescription":"'InstanceType' must be a valid EC2 instance type."
+      },
+      "Email":{
+         "Description":"An email address you wish to send notifications to in the event that one of your VPN server must reboot due to an issue. You can subscribe more email addresses after creation of this stack.",
+         "Type":"String",
+         "AllowedPattern":"[-_ @a-zA-Z0-9.]*",
+         "MinLength":"7",
+         "ConstraintDescription":"Please provide a valid email"
+      },
+      "RemoteNetwork":{
+         "Description":"The REMOTE subnet (LAN) that you wish to access through the VPN. DONT USE 0.0.0.0/0 it may break something!",
+         "Type":"String",
+         "MinLength":"9",
+         "MaxLength":"18",
+         "AllowedPattern":"(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})",
+         "ConstraintDescription":"'RemoteSubnet' must be a valid CIDR range of the form x.x.x.x/x."
+      },
+      "PublicSubnet":{
+         "Description":"The PUBLIC subnet ID (i.e. subnet-xxxxxxxx) of the VPC you want to launch the CloudFort server in.",
+	  "Type":"String",
+         "MinLength":"10",
+         "MaxLength":"15"
+      },
+      "PublicRouteTable":{
+         "Description":"The route table ID that you will be using for the public subnet (i.e. rtb-xxxxxxxx).",
+	 "Type":"String",
+         "MinLength":"10",
+         "MaxLength":"12"
+      },
+      "PrivateRouteTable":{
+         "Description":"The route table ID that you will be using for the private subnet (i.e. rtb-xxxxxxxx). This subnet will be using the CloudFort server as its gateway .",
+	 "Type":"String",
+         "MinLength":"10",
+         "MaxLength":"12"
+      },
+      "PrivateSecurityGroup":{
+         "Description":"The security group ID that you will be using for the private servers (i.e. sg-xxxxxxxx).",
+	  "Type":"String",
+         "MinLength":"10",
+         "MaxLength":"11"
+      },
+      "PublicSecurityGroup":{
+         "Description":"The security group ID that you will be using to launch your CloudFort server in (i.e. sg-xxxxxxxx).",
+          "Type":"String",
+         "MinLength":"10",
+         "MaxLength":"11"
+      }
+   },
+   "Mappings":{
+      "AWSVPNAMI":{
+         "us-east-1":{
+            "AMI":"ami-35dbde5c"
+         },
+         "us-west-2":{
+            "AMI":"ami-7eaecc4e"
+         },
+         "us-west-1":{
+            "AMI":"ami-9c91acd9"
+         },
+         "eu-west-1":{
+            "AMI":"ami-ec50a19b"
+         },
+         "ap-southeast-1":{
+            "AMI":"ami-b0cf99e2"
+         },
+         "ap-southeast-2":{
+            "AMI":"ami-0729b73d"
+         },
+         "ap-northeast-1":{
+            "AMI":"ami-21077220"
+         },
+         "sa-east-1":{
+            "AMI":"ami-91ec4f8c"
+         }
+      }
+   },
+   "Resources":{
+   "CloudFortRole":{
+      "Type":"AWS::IAM::Role",
+      "Properties":{
+         "AssumeRolePolicyDocument":{
+            "Statement":{
+                  "Effect":"Allow",
+                  "Principal":{
+                     "Service":[
+                        "ec2.amazonaws.com"
+                     ]
+                  },
+                  "Action":[
+                     "sts:AssumeRole"
+                  ]
+               }
+         },
+         "Path":"/",
+         "Policies":[
+            {
+               "PolicyName":"CloudFort",
+               "PolicyDocument":{
+                  "Statement":[
+                     {
+                        "Action":[
+                           "ec2:DescribeInstances",
+                           "ec2:CreateRoute",
+                           "ec2:DescribeRouteTables",
+                           "ec2:ReplaceRoute",
+                           "ec2:StartInstances",
+                           "ec2:StopInstances",
+                           "ec2:DescribeSecurityGroups",
+                           "ec2:AuthorizeSecurityGroupIngress",
+                           "sns:Publish"
+                        ],
+                        "Effect":"Allow",
+                        "Resource":"*"
+                     }
+                  ]
+               }
+            }
+         ]
+      }
+   },
+   "CloudFortInstanceProfile":{
+      "Type":"AWS::IAM::InstanceProfile",
+      "Properties":{
+         "Path":"/",
+         "Roles":[
+            {
+               "Ref":"CloudFortRole"
+            }
+         ]
+      }
+   },
+   "EIP1":{
+      "Type":"AWS::EC2::EIP",
+      "DependsOn":"Instance1",
+      "Properties":{
+         "InstanceId":{
+            "Ref":"Instance1"
+         },
+         "Domain":"vpc"
+      }
+   },
+   "MySNSTopic":{
+      "Type":"AWS::SNS::Topic",
+      "Properties":{
+         "Subscription":[
+            {
+               "Endpoint":{
+                  "Ref":"Email"
+               },
+               "Protocol":"email"
+            }
+         ],
+         "TopicName":"CloudFortTopic",
+         "DisplayName":"CloudFortHealthCheck"
+      }
+   },
+   "PublicInbound":{
+      "Type":"AWS::EC2::SecurityGroupIngress",
+      "Properties":{
+         "GroupId":{
+            "Ref":"PublicSecurityGroup"
+         },
+         "IpProtocol":"-1",
+         "SourceSecurityGroupId":{
+            "Ref":"PrivateSecurityGroup"
+         }
+      }
+	},
+      "PrivateInbound1":{
+         "Type":"AWS::EC2::SecurityGroupIngress",
+         "Properties":{
+            "GroupId":{
+               "Ref":"PrivateSecurityGroup"
+            },
+            "IpProtocol":"-1",
+            "SourceSecurityGroupId":{
+               "Ref":"PublicSecurityGroup"
+            }
+         }
+	},
+         "PrivateInbound2":{
+            "Type":"AWS::EC2::SecurityGroupIngress",
+            "Properties":{
+               "GroupId":{
+                  "Ref":"PrivateSecurityGroup"
+               },
+               "IpProtocol":"-1",
+               "CidrIp":{
+                  "Ref":"RemoteNetwork"
+               }
+	}
+            },
+            "PublicRoute1":{
+               "Type":"AWS::EC2::Route",
+               "DependsOn":"Instance1",
+               "Properties":{
+                  "DestinationCidrBlock":{
+                     "Ref":"RemoteNetwork"
+                  },
+                  "RouteTableId":{
+                     "Ref":"PublicRouteTable"
+                  },
+                  "InstanceId":{
+                     "Ref":"Instance1"
+                  }
+               }
+		},
+               "Instance1":{
+                     "DependsOn":"MySNSTopic",
+                     "Type":"AWS::EC2::Instance",
+			"Metadata" : {
+        		"Comment1" : "Configure the bootstrap helpers to install the Apache Web Server and PHP",
+        		"Comment2" : "Save website content to /var/www/html/index.php",
+
+        		"AWS::CloudFormation::Init" : {
+          		"configSets" : {
+            		"Install" : [ "Install" ]
+          				},
+			"Install" : {
+            		"packages" : {
+              		"yum" : {
+                "httpd"        : []
+              			}
+			},
+			"files" : {
+              "/var/www/html/index.html" : {
+                "content" : { "Fn::Join" : [ "", [
+                  "<html>\n",
+                  "  <head>\n",
+                  "  </head>\n",
+                  "  <body>\n",
+                  "    <h1>this is a test</h1>\n",
+		  "  </body>\n",
+		  " </html>\n"
+		]]},
+		"mode"  : "000600",
+                "owner" : "apache",
+                "group" : "apache"
+              }
+	},
+            "services" : {
+              "sysvinit" : {  
+                "httpd"   : { "enabled" : "true", "ensureRunning" : "true" }
+              }
+	}
+	}
+		}
+			},
+                     "Properties":{
+                        "DisableApiTermination":"false",
+                        "SecurityGroupIds":[
+                           {
+                              "Ref":"PublicSecurityGroup"
+                           }
+                        ],
+                        "ImageId":{
+                           "Fn::FindInMap":[
+                              "AWSVPNAMI",
+                              {
+                                 "Ref":"AWS::Region"
+                              },
+                              "AMI"
+                           ]
+                        },
+                        "IamInstanceProfile":{
+                           "Ref":"CloudFortInstanceProfile"
+                        },
+                        "InstanceType":{
+                           "Ref":"InstanceType"
+                        },
+                        "KeyName":{
+                           "Ref":"KeyPair"
+                        },
+                        "UserData":{
+                           "Fn::Base64":{
+                              "Fn::Join":[
+                                 "",
+                                 [
+                                    "#!/bin/bash -v\n",
+                                    "\n",
+                                    "# Change env variables",
+                                    "\n",
+                                    "export DEBIAN_FRONTEND=noninteractive",
+                                    "\n",
+                                    "# Update system",
+                                    "\n",
+                                    "apt-get update -y",
+                                    "\n",
+                                    "# Install packages",
+                                    "\n",
+                                    "apt-get install ipsec-tools racoon quagga -y",
+                                    "\n",
+                                    "apt-get install python-pip -y",
+                                    "\n",
+                                    "# Set environment variables",
+                                    "\n",
+                                    "echo SNS=",
+                                    {
+                                       "Ref":"MySNSTopic"
+                                    },
+                                    " >> /etc/environment",
+                                    "\n",
+                                    "echo EMAIL=",
+                                    {
+                                       "Ref":"Email"
+                                    },
+                                    " >> /etc/environment",
+                                    "\n",
+                                    "\n",
+                                    "curl -X PUT -H 'Content-Type:' --data-binary '{\"Status\" : \"SUCCESS\",",
+                                    "\"Reason\" : \"The vpn packages have downloaded\",",
+                                    "\"UniqueId\" : \"vpnpackages\",",
+                                    "\"Data\" : \"Done\"}' ",
+                                    "\"",
+                                    {
+                                       "Ref":"VPNWaitHandle"
+                                    },
+                                    "\"\n"
+                                 ]
+                              ]
+                           }
+                        },
+			"Tags":[
+                           {
+                              "Key":"Name",
+                              "Value":"CloudFortServer"
+                           }
+                        ],
+                        "SourceDestCheck":"false",
+                        "SubnetId":{
+                           "Ref":"PublicSubnet"
+                        }
+
+				}
+},
+			"PrivateRoute1":{
+                  "Type":"AWS::EC2::Route",
+		  "DependsOn":"Instance1",
+                  "Properties":{
+                     "DestinationCidrBlock":"0.0.0.0/0",
+                     "RouteTableId":{
+                        "Ref":"PrivateRouteTable"
+                     },
+                     "InstanceId":{
+                        "Ref":"Instance1"
+                     }
+                  }
+                },
+                  "VPNWaitHandle":{
+                     "Type":"AWS::CloudFormation::WaitConditionHandle",
+                     "Properties":{
+
+                     }
+                  },
+                  "VPNWaitCondition":{
+                     "Type":"AWS::CloudFormation::WaitCondition",
+                     "DependsOn":[
+                        "EIP1"
+                     ],
+                     "Properties":{
+                        "Handle":{
+                           "Ref":"VPNWaitHandle"
+                        },
+                        "Timeout":"180"
+                     }
+                  }
+                  },
+                  "Outputs":{
+                     "CloudFortInstance":{
+                        "Description":"Use this public IP to access your VPN server",
+                        "Value":{
+                           "Fn::Join":[
+                              " : ",
+                              [
+                                 "EIP",
+                                 {
+                                    "Ref":"EIP1"
+                                 }
+                              ]
+                           ]
+                        }
+                     }
+                  }
+	}
