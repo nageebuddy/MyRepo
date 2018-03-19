@@ -1,5 +1,5 @@
 # ActiveSG Credentials
 
-USERNAME='s8165837d' # Username or Email
-PASSWORD='naga2raj' 
+USERNAME='' # Username or Email
+PASSWORD='' 
 PIN='100102' # eWallet PIN
