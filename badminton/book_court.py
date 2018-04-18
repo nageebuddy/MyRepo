@@ -1,4 +1,4 @@
-import datetime, traceback
+import datetime, traceback, re, sys
 import time
 import requests
 import rsa
@@ -6,6 +6,17 @@ import base64
 from bs4 import BeautifulSoup
 from auth import USERNAME, PASSWORD, PIN
 from settings import ACTIVITY, VENUE_ID, FORWARD_BOOKING_DAYS
+
+pattern_test = 'Booking complete'
+pattern = re.compile(pattern_test, re.IGNORECASE)
+
+with open('/tmp/court_booking.log', 'r') as log_file:
+ file_content = log_file.readlines()
+
+for each_line in file_content:
+ if pattern.search(each_line):
+   print('exiting as booking complete')
+   sys.exit()
 
 def retry_on_failure(times=5, timeout=10):
     def retry_wrapper(func):
@@ -82,11 +93,11 @@ class CourtBooking(object):
         # fdscv_value = fdscv_input.attrs['value']
 
         all_court_slots = soup.find_all('input', {'type': 'checkbox', 'name': 'timeslots[]'})
-
+        print(all_court_slots)
         first_court = ''
         for slot in all_court_slots:
             slot_value = slot.attrs['value']
-            if not first_court and slot_value.find('Court') == 0 and slot_value.find('15:00:00;16:00:00') > -1:
+            if not first_court and slot_value.find('Court') == 0 and slot_value.find('20:00:00;21:00:00') > -1:
                 first_court = slot_value
 
             if first_court:
@@ -147,11 +158,11 @@ class CourtBooking(object):
 
 #if __name__ == '__main__':
     #now = datetime.datetime.now()
-    #print '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+    print '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
     #print 'Booking on %s' % (str(now))
     #booking = CourtBooking()
     #booking.login()
     #booking.add_available_courts()
     #booking.checkout_cart()
     #print 'Booking complete.\n'
-    #print '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+    ##print '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
