@@ -21,11 +21,11 @@ art1.h2.a.text
 art1.p
 art1.p.text
 
-Class = Public/private - Attr and mothod
+Class = Public/private - Attr and mothod - 3
 isinstance, issubclass
-Decorator
-Classmethod & Staticmethod
-MRO
-Metaprogramming
-htmp scratch
-try/except/finally Raise
+Decorator - 1
+Classmethod & Staticmethod - 2 
+MRO - 4 
+Metaprogramming - 5
+htmp scratch - last
+try/except/finally Raise - 0 
