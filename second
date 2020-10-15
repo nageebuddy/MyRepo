@@ -5,3 +5,47 @@ this is a test
 >>>>>>> 88654f891d8c4322f9125964ae650e6b097e4e87
 using merge to check if done
 check again if update
+
+import os, boto3, json
+
+# # get the mounted filesystem
+# data = os.popen('df -k').read()
+
+with open('/tmp/fs', 'r') as f:
+    raw_data = f.read()
+
+# data = raw_data.split(',')
+# for line in data:
+#     if line.split(' ')[-2] == "/":
+#         print(line.split(' '))
+
+# print(parse_data)
+
+# root_fs = parse_data.split(' ')
+# total, used, percent = root_fs[2], root_fs[4], root_fs[-2]
+# print(total, used, percent)
+precentage = '24%'
+total, used, percent = '192807', '40231', '24%'
+percent = precentage.split('%')[0]
+
+
+
+total, used, percent = map(float, [total, used, percent])
+print(total, used, percent)
+
+def threshold(total, used):
+    # get 75% 
+    limit = ( total / 10 ) * 75
+    return int(limit - used)
+
+if total and used and percent:
+    current_percent = int((used/total) * 100)
+    print(current_percent)
+    if current_percent < 70 and percent - 4 <= current_percent < percent + 2:
+        print("proceed")
+        print(threshold(total, used))
+        with open('canary_file', 'wb') as f:
+            num_chars = threshold(total, used) * 1024 # in GB (Return in KB so * 1024)
+            f.write('0' * num_chars)
+    # else:
+    #     #something serious send an email
